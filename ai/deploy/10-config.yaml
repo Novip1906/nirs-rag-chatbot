@@ -1,0 +1,425 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: librechat-env
+  namespace: corporate
+data:
+  HOST: "0.0.0.0"
+  PORT: "3080"
+  MONGO_URI: "mongodb://mongodb:27017/LibreChat"
+  DOMAIN_CLIENT: "https://ai.example.com"
+  DOMAIN_SERVER: "https://ai.example.com"
+  CONFIG_PATH: "/app/librechat.yaml"
+  # Лимиты и отчёты считают сутки и месяц по местному времени процесса.
+  # Без этого контейнер живёт по UTC, и день заканчивался бы в 03:00 по Москве.
+  TZ: "Europe/Moscow"
+  APP_TITLE: "Corporate AI"
+  ENDPOINTS: "custom"
+  # Переключатель провайдера моделей: "polza" или "openrouter". От него зависит
+  # всё сразу — на какой эндпоинт смотрят спеки моделей (`${AI_ACTIVE_ENDPOINT}`
+  # в librechat.yaml ниже), чей баланс показывает админка и в какой валюте
+  # провайдер отдаёт стоимость вызова. Второго эндпоинта из конфига убирать
+  # нельзя: его имя записано в старых беседах, и без объявления такая беседа
+  # не откроется. Смена значения требует перезапуска пода — конфиг читается
+  # один раз на старте.
+  AI_PROVIDER: "openrouter"
+  AI_BASE_URL: "https://polza.ai/api/v1"
+  OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1"
+  # Учёт расходов ведётся в долларах, а polza считает в рублях: и стоимость
+  # вызова (`usage.cost_rub`), и остаток на счету пересчитываются по этому курсу
+  # при записи. Курс постоянный и правится вручную — котировок мы не тянем;
+  # значение на 2026-08-29 по ЦБ. Прошлые записи журнала не пересчитываются.
+  RUB_PER_USD: "85.6"
+  RAG_API_URL: "http://rag-api:8000"
+  # Прокси нужен внешнему поиску и OpenRouter: адрес кластера заблокирован у
+  # Tavily и Serper, а openrouter.ai отдаёт с него 403 «Access denied by security
+  # policy» (через прокси — 200). Сама строка прокси лежит в секрете (в ней логин
+  # и пароль), а здесь — исключения: обращения к базам внутри кластера через
+  # прокси не идут.
+  #
+  # При AI_PROVIDER=openrouter через прокси идёт и весь трафик моделей, то есть
+  # прокси стал общей точкой отказа: его падение роняет чат целиком, а не только
+  # поиск. Обойти это нельзя — напрямую openrouter.ai отвечает 403. Измерено
+  # 2026-08-31 из пода: прокси SSE не буферизует, стриминг с объявленными
+  # инструментами доходит чанками (276 чанков, первый через 1,45 с).
+  # polza.ai в списке исключений остаётся: она доступна напрямую, и на случай
+  # возврата AI_PROVIDER=polza её трафик через прокси гонять незачем.
+  NO_PROXY: "localhost,127.0.0.1,::1,mongodb,rag-api,vectordb,.svc,.svc.cluster.local,.cluster.local,polza.ai"
+  SEARCH: "false"
+  # Закрыто: домен смотрит в интернет, сотрудников заводит администратор в общей админке.
+  ALLOW_REGISTRATION: "false"
+  # Вход только через Keycloak: учётные записи заводит админ там же, и второй
+  # способ входа означал бы второй пароль, который никто не выдаёт и не меняет.
+  # Форма пароля исчезает со страницы входа, а сам `/api/auth/login` отвечает 403.
+  # Аварийный ключ на случай, если Keycloak ляжет, — `ALLOW_EMAIL_LOGIN_OVERRIDE`:
+  # он открывает локальный вход, не трогая эту строку (правка ConfigMap + рестарт
+  # пода). Локальные пароли в Mongo при этом никуда не делись.
+  ALLOW_EMAIL_LOGIN: "false"
+  ALLOW_SOCIAL_LOGIN: "true"
+  ALLOW_SOCIAL_REGISTRATION: "true"
+  OPENID_ISSUER: "https://auth.example.com/realms/corporate"
+  OPENID_CLIENT_ID: "librechat"
+  OPENID_CALLBACK_URL: "/oauth/openid/callback"
+  OPENID_SCOPE: "openid profile email"
+  OPENID_USE_PKCE: "true"
+  OPENID_BUTTON_LABEL: "Войти через корпоративный аккаунт"
+  # Способ входа один, поэтому страница с единственной кнопкой — лишний экран:
+  # сотрудник открывает адрес и сразу попадает на форму Keycloak. Кнопка с этой
+  # подписью остаётся видна только как запасной вариант, если автоматический
+  # переход не сработал. Выход из системы ведёт на `/login?redirect=false` и
+  # автоперехода не запускает — иначе сменить учётную запись было бы нельзя.
+  OPENID_AUTO_REDIRECT: "true"
+  # Без этого «Выйти» гасит только локальную сессию LibreChat — SSO-сессия в
+  # Keycloak остаётся живой, и следующий вход через корпоративную кнопку проходит
+  # молча, без пароля. Keycloak-клиент librechat уже разрешает
+  # post.logout.redirect.uris = "https://ai.example.com/*" — редирект на
+  # `${DOMAIN_CLIENT}/login` (дефолт в коде) в этот паттерн попадает, отдельный
+  # OPENID_POST_LOGOUT_REDIRECT_URI не нужен.
+  OPENID_USE_END_SESSION_ENDPOINT: "true"
+  ADMIN_PANEL_URL: "https://admin.example.com"
+  ALLOW_UNVERIFIED_EMAIL_LOGIN: "true"
+  NODE_OPTIONS: "--max-old-space-size=760"
+  ADMIN_API_URL: "http://admin-api:8091"
+  ADMIN_API_CLIENT_ID: "ai-admin-api"
+  ADMIN_API_NOTIFY_CLIENT: "admin-api-notify"
+  ADMIN_API_NOTIFY_AUDIENCE: "corporate-ai"
+  ADMIN_OIDC_AUDIENCE: "corporate-ai"
+  ADMIN_OIDC_CLIENT: "admin"
+  ADMIN_API_SYNC_MODE: "report"
+  ADMIN_API_SYNC_INTERVAL_MS: "60000"
+  ADMIN_API_SYNC_MAX_CHANGES: "5"
+  # Ключи доступа (KNOWLEDGE_S3_ACCESS_KEY, KNOWLEDGE_S3_SECRET_KEY) — в
+  # librechat-secrets, не здесь: их значения совпадают с секретом minio-credentials.
+  KNOWLEDGE_S3_ENDPOINT: "http://minio:9000"
+  KNOWLEDGE_S3_BUCKET: "knowledge"
+  KNOWLEDGE_S3_REGION: "us-east-1"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: librechat-yaml
+  namespace: corporate
+data:
+  librechat.yaml: |
+    version: 1.3.14
+    cache: true
+
+    interface:
+      modelSelect: true
+      # Поиск по документам закреплён: он вынесен в меню инструментов вместе с
+      # остальными, но в отличие от них нужен в каждом втором разговоре, поэтому
+      # показывается сразу, а не после того, как сотрудник его найдёт и закрепит.
+      # Сотрудник может открепить его сам — его выбор перебивает эту настройку.
+      defaultPinnedTools:
+        - knowledge_search
+        - web_search
+      parameters: false
+      presets: false
+      bookmarks: false
+      prompts: false
+      memories: true
+      multiConvo: false
+      agents:
+        use: false
+        create: false
+        share: false
+        public: false
+      marketplace:
+        use: false
+      mcpServers:
+        use: false
+        create: false
+        share: false
+        public: false
+      schedules:
+        use: false
+        create: false
+      skills: false
+      sharedLinks: false
+      temporaryChat: false
+      runCode: false
+      webSearch: true
+      fileSearch: false
+      fileCitations: true
+      feedback: true
+      # Убраны из панели под сообщением: озвучка, редактирование, ветвление.
+      # Отдельный `textToSpeech` здесь, а не в секции `speech`: та лишь
+      # подставляет значение по умолчанию пользователю и проигрывает уже
+      # сохранённому в браузере, то есть у тех, кто заходил раньше, кнопку
+      # не убрала бы.
+      textToSpeech: false
+      # Микрофон у строки ввода: запись расшифровывается на сервере (секция
+      # `speech` ниже), текст дописывается к набранному, отправляет сотрудник
+      # сам. Вкладки «Речь» в настройках при этом нет: раз распознаёт сервер,
+      # движок принудительно внешний и настраивать сотруднику нечего, а
+      # озвучка выключена строкой выше.
+      speechToText: true
+      messageEdit: false
+      fork: false
+      peoplePicker:
+        users: false
+        groups: false
+        roles: false
+      buildInfo: false
+      contextUsage: false
+
+    # Распознавание диктовки. Отдельного STT-эндпоинта у OpenRouter нет: запись
+    # (WAV 16 кГц моно) уходит аудио-модели через chat/completions частью
+    # `input_audio` с инструкцией «дословная расшифровка, просьбы не
+    # выполнять». Модель выбрана сравнением на русских фразах с числами,
+    # аббревиатурами и провокациями и меняется этой строкой. Запрос идёт через
+    # тот же прокси, что и чат: напрямую openrouter.ai отвечает 403.
+    # Стоимость (`usage.cost`, доллары) пишется в журнал расходов сотрудника со
+    # сценарием `stt` и входит в его суточный лимит.
+    speech:
+      stt:
+        openrouter:
+          model: 'google/gemini-3.7-flash'
+          apiKey: '${OPENROUTER_API_KEY}'
+          baseURL: '${OPENROUTER_BASE_URL}'
+
+    imageGeneration:
+      model: 'openai/gpt-5.4-image-2'
+      apiKey: '${OPENROUTER_API_KEY}'
+      baseURL: '${OPENROUTER_BASE_URL}'
+      resolution: '1K'
+      quality: 'medium'
+      outputFormat: 'jpeg'
+      estimatedCostUsd: 0.05
+
+    # Память сотрудника. Модель сама сохраняет то, что пригодится в следующих
+    # беседах (о человеке и по работе), и по явной просьбе «запомни» / «забудь».
+    # Пишет она инлайновыми set_memory/delete_memory по ходу ответа, по гарду
+    # `memoryToolUsageGuard` из packages/api/src/agents/memory.ts; без просьбы —
+    # не больше одной-двух записей за ответ и без упоминания в ответе.
+    #
+    # Блока `agent` здесь нет намеренно: отдельный агент памяти стоил бы
+    # лишнего вызова модели после каждого сообщения. Выключить его можно только
+    # отсутствием блока. `memory.agent` в схеме — union из двух форм, и обе
+    # требуют больше, чем один флаг: либо `id`, либо пару `provider` + `model`.
+    # Написать `agent: {enabled: false}` нельзя — конфиг не проходит валидацию и
+    # приложение падает на старте (проверено на dev 2026-09-01). Без блока
+    # `isMemoryAgentEnabled` возвращает false.
+    #
+    # Партиций две, и `tokenLimit` считается в каждой отдельно: личная память
+    # видна сотруднику во всех чатах, проектная — только в чатах своего
+    # проекта. Когда запись поднимает раздел выше 90% лимита, он в фоне
+    # сжимается дешёвой моделью (`titleModel` активного эндпоинта), не чаще раза
+    # в 6 часов. Снимок до сжатия хранится 30 дней, последнее сжатие раздела
+    # можно отменить из панели памяти.
+    #
+    # `validKeys` намеренно не задан. Белый список ключей осмыслен для личной
+    # памяти, где набор фактов о человеке предсказуем, и бессмыслен для
+    # проектной, где ключи диктует содержание работы.
+    #
+    # `memory: true` проставлен у модельных спеков, а не оставлен тумблером в
+    # чате: автопамять должна работать без лишних действий сотрудника. От тех же
+    # инструментов памяти зависят конспекты бесед и блок недавних бесед в
+    # запросе. Сотрудник отключает всё это разом в настройках персонализации
+    # (`personalize: true`).
+    memory:
+      disabled: false
+      personalize: true
+      charLimit: 2000
+      tokenLimit: 12000
+
+    # Человеческие названия вместо сырых идентификаторов моделей.
+    # enforce: true — сотрудник выбирает только из этого списка.
+    # `${AI_ACTIVE_ENDPOINT}` — не переменная окружения, а метка: при загрузке
+    # конфига она заменяется на имя эндпоинта того провайдера, который выбран
+    # в AI_PROVIDER. Писать имя эндпоинта здесь напрямую значило бы держать
+    # переключатель в двух местах и однажды их не синхронизировать.
+    # Иконка у каждой модели — логотип её владельца (Google, Anthropic), а не
+    # наш знак: сотрудник должен видеть, чья это нейросеть. Фирменный знак
+    # остаётся на эндпоинте и в интерфейсе приложения.
+    modelSpecs:
+      enforce: true
+      prioritize: true
+      list:
+        - name: 'gpt-5-6-luna'
+          label: 'GPT-5.6 Luna'
+          iconURL: '/assets/openai.svg'
+          default: true
+          order: 2
+          knowledgeBase: true
+          webSearch: true
+          memory: true
+          fileExport: true
+          imageGeneration: true
+          preset:
+            endpoint: '${AI_ACTIVE_ENDPOINT}'
+            model: 'openai/gpt-5.6-luna'
+        - name: 'gemini-3-7-flash'
+          label: 'Gemini 3.7 Flash'
+          iconURL: '/assets/google.svg'
+          order: 3
+          knowledgeBase: true
+          webSearch: true
+          memory: true
+          fileExport: true
+          imageGeneration: true
+          preset:
+            endpoint: '${AI_ACTIVE_ENDPOINT}'
+            model: 'google/gemini-3.7-flash'
+        - name: 'claude-sonnet-5'
+          label: 'Claude Sonnet 5'
+          iconURL: '/assets/anthropic.svg'
+          order: 4
+          knowledgeBase: true
+          webSearch: true
+          memory: true
+          fileExport: true
+          imageGeneration: true
+          preset:
+            endpoint: '${AI_ACTIVE_ENDPOINT}'
+            model: 'anthropic/claude-sonnet-5'
+
+    # Предотвращение утечки данных: чувствительные значения заменяются на
+    # заглушки перед отправкой в модель и восстанавливаются в ответе. Для
+    # сотрудника это незаметно — он видит и пишет исходные данные.
+    #
+    # Категории перечислены явно, хотя схема проставила бы те же значения сама:
+    # `loadCustomConfig` отдаёт сырой YAML, а не результат разбора, и полагаться
+    # на умолчания в файле, который читают люди, — значит скрывать от админа,
+    # что именно защищено. `resolveDlpConfig` всё равно достроит пропущенное.
+    # Веб-поиск ходит через прокси: балансировщик Tavily (`awselb/2.0`) отдаёт
+    # 403 на любой POST с адреса кластера,
+    # независимо от способа авторизации; GET с того же адреса получает честный
+    # 401, то есть сеть есть — режут именно вызовы API. Serper так же. Прокси
+    # задан переменными `HTTPS_PROXY`/`HTTP_PROXY` из секрета, исключения — в
+    # `NO_PROXY` выше.
+    #
+    # Tavily закрывает обе роли одним ключом: и поиск, и чтение найденных
+    # страниц. Переранжирование выключено — для него нужен третий ключ, а без
+    # него запрос падал бы целиком.
+    webSearch:
+      searchProvider: 'tavily'
+      scraperProvider: 'tavily'
+      rerankerType: 'none'
+
+    dlp:
+      enabled: true
+      maskEmbeddings: true
+      categories:
+        secrets: mask
+        payment_card: mask
+        bank_account: mask
+        ru_inn: mask
+        ru_snils: mask
+        ru_passport: mask
+
+    fileConfig:
+      serverFileSizeLimit: 50
+      imageGeneration:
+        percentage: 100
+      endpoints:
+        default: &attachments
+          fileLimit: 10
+          fileSizeLimit: 50
+          supportedMimeTypes:
+            - '^image/(jpeg|png|webp|gif|heic|heif)$'
+            - '^application/pdf$'
+            - '^application/vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)$'
+            - '^application/(vnd\.ms-excel|msexcel|x-msexcel|x-ms-excel|x-excel|x-dos_ms_excel|xls|x-xls)$'
+            - '^application/vnd\.oasis\.opendocument\.(text|spreadsheet)$'
+            - '^application/(msword|rtf)$'
+            - '^text/[\w.+-]+$'
+            - '^application/(json|xml|csv|yaml|x-yaml|sql|typescript|x-sh|vnd\.coffeescript)$'
+        agents: *attachments
+        custom: *attachments
+
+    endpoints:
+      # Порог отсечения источников, по умолчанию 0.45. Отсекать источник после
+      # того, как ответ на нём уже построен, неверно в принципе: это прячет
+      # происхождение выданного ответа. Фильтровать нужно на этапе
+      # поиска, а не на отображении.
+      agents:
+        minRelevanceScore: 0
+        toolApproval:
+          enabled: true
+          mode: 'bypass'
+          ask:
+            - 'generate_image'
+      custom:
+        # Имя эндпоинта — внутренний идентификатор: оно записано в поле
+        # `endpoint` каждой беседы, начатой на этом провайдере. Переименование
+        # оборвало бы историю, поэтому бренд задаётся отдельно —
+        # `modelDisplayLabel`, которую и видит сотрудник. Имена обоих эндпоинтов
+        # продублированы в реестре провайдеров (`packages/api/src/corporate/
+        # provider.ts`): по ним берётся активный эндпоинт и адрес для баланса.
+        #
+        # polza — эндпоинт провайдера polza.ai. Стоимость приходит в рублях
+        # (`usage.cost_rub`) и пересчитывается в доллары по RUB_PER_USD, потому
+        # что журнал, лимиты и аналитика ведутся в долларах. Осторожно: polza
+        # отдаёт заодно и поле `cost`, но тоже в рублях, — читать его как
+        # доллары значило бы завысить расход примерно в 86 раз.
+        - name: 'Corporate AI'
+          apiKey: '${AI_API_KEY}'
+          baseURL: '${AI_BASE_URL}'
+          models:
+            # fetch: true — сотни моделей каталога provider'а, а не только четыре из
+            # `default`. Тот же каталог, что видит админка (`GET /admin/models`), плюс
+            # синтетические спеки для моделей без записи в `modelSpecs` (см.
+            # `filterModelSpecsForUser`): без этого разрешённая в админке модель без
+            # именованного спека не появилась бы в чате даже с `fetch: true` здесь.
+            # `default` остаётся резервным списком на случай, если сам фетч не удался
+            # (см. `loadConfigModels`).
+            default:
+              - 'openai/gpt-5.6-luna'
+              - 'google/gemini-3.7-flash'
+              - 'anthropic/claude-sonnet-5'
+            fetch: true
+          titleConvo: true
+          titleModel: 'openai/gpt-5.6-luna'
+          # Без своей инструкции заголовок беседы приходит стоковым английским
+          # промптом библиотеки: у сотрудника, писавшего по-русски, список чатов
+          # заполняется названиями вида «QA-2026 Codeword Inquiry».
+          titlePrompt: |
+            Придумай название беседы на том же языке, на котором написан запрос
+            пользователя. Не длиннее пяти слов, по сути разговора, без кавычек,
+            без точки в конце и без слов «беседа», «чат», «диалог». Верни только
+            само название.
+
+            Беседа:
+            {convo}
+          modelDisplayLabel: 'Corporate AI'
+          # Параллельные вызовы инструментов ломают ответ: провайдер шлёт
+          # аргументы всех вызовов корректно (проверено на потоке — index=0 и
+          # index=1 приходят полными), но сборщик потока LangChain теряет
+          # аргументы второго. Инструмент не выполняется, модель не получает
+          # результат и заканчивает ход без текста — сотрудник видит пустой
+          # ответ. Пока сборщик не починен, вызовы идут по одному.
+          addParams:
+            parallel_tool_calls: false
+
+        # OpenRouter. Стоимость приходит в долларовых кредитах (`usage.cost`) и
+        # записывается как есть. Стоимость снимается с обоих эндпоинтов, а не
+        # только с активного: беседа, начатая на прежнем провайдере, продолжает
+        # считаться, когда сотрудник дописывает в неё сообщение.
+        - name: 'OpenRouter'
+          apiKey: '${OPENROUTER_API_KEY}'
+          baseURL: '${OPENROUTER_BASE_URL}'
+          models:
+            # fetch: true — тот же резон, что у 'Corporate AI' выше: полный каталог
+            # провайдера, а не только `default`, если AI_PROVIDER переключат на него.
+            default:
+              - 'openai/gpt-5.6-luna'
+              - 'google/gemini-3.7-flash'
+              - 'anthropic/claude-sonnet-5'
+            fetch: true
+          titleConvo: true
+          titleModel: 'openai/gpt-5.6-luna'
+          # Без своей инструкции заголовок беседы приходит стоковым английским
+          # промптом библиотеки: у сотрудника, писавшего по-русски, список чатов
+          # заполняется названиями вида «QA-2026 Codeword Inquiry».
+          titlePrompt: |
+            Придумай название беседы на том же языке, на котором написан запрос
+            пользователя. Не длиннее пяти слов, по сути разговора, без кавычек,
+            без точки в конце и без слов «беседа», «чат», «диалог». Верни только
+            само название.
+
+            Беседа:
+            {convo}
+          modelDisplayLabel: 'Corporate AI'
+          addParams:
+            parallel_tool_calls: false

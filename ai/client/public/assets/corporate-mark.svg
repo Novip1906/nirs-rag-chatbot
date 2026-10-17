@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
+<defs><linearGradient id="corporate-mark" x1="70" y1="26" x2="26" y2="70" gradientUnits="userSpaceOnUse"><stop stop-color="#34D3B5"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs>
+<rect width="96" height="96" rx="48" fill="#0B1B33"/>
+<path d="M64.85 33.86 A22 22 0 1 0 64.85 62.14" stroke="url(#corporate-mark)" stroke-width="11" stroke-linecap="round" fill="none"/><circle cx="68.90" cy="48" r="6.050000000000001" fill="url(#corporate-mark)"/>
+</svg>

@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-api
+  namespace: corporate
+spec:
+  selector:
+    app: rag-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-api
+  namespace: corporate
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: rag-api
+  template:
+    metadata:
+      labels:
+        app: rag-api
+    spec:
+      initContainers:
+        - name: wait-for-vectordb
+          image: pgvector/pgvector:0.8.0-pg15-trixie
+          command:
+            - sh
+            - -c
+            - until pg_isready -h vectordb -p 5432 -U raguser; do sleep 2; done
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+      containers:
+        - name: rag-api
+          image: registry.librechat.ai/danny-avila/librechat-rag-api-dev-lite:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: VECTOR_DB_TYPE
+              value: "pgvector"
+            - name: EMBEDDINGS_PROVIDER
+              value: "openai"
+            - name: EMBEDDINGS_MODEL
+              value: "baai/bge-m3"
+            # LangChain по умолчанию токенизирует текст на своей стороне и шлёт в
+            # /embeddings массив чисел вместо строк. OpenAI такое принимает, polza.ai —
+            # нет: отвечает 400 «input должен быть непустой строкой либо непустым
+            # массивом непустых строк», и индексация молча не работает целиком.
+            # False заставляет слать сырые строки. Ограничение контекста при этом
+            # не проверяется на клиенте, но чанки rag_api втрое короче лимита bge-m3
+            # в 8192 токена, так что упереться в него нечем.
+            - name: RAG_CHECK_EMBEDDING_CTX_LENGTH
+              value: "False"
+            - name: RAG_OPENAI_BASEURL
+              value: "https://polza.ai/api/v1"
+            - name: RAG_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: librechat-secrets
+                  key: AI_API_KEY
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: librechat-secrets
+                  key: JWT_SECRET
+            - name: DB_HOST
+              value: "vectordb"
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: "ragdb"
+            - name: POSTGRES_USER
+              value: "raguser"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: librechat-secrets
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              memory: "200Mi"
+              cpu: "50m"
+            limits:
+              memory: "700Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5

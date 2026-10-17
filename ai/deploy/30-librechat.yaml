@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: librechat-data
+  namespace: corporate
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 3Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: knowledge-data
+  namespace: corporate
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: librechat
+  namespace: corporate
+spec:
+  selector:
+    app: librechat
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: librechat
+  namespace: corporate
+spec:
+  replicas: 1
+  # Выкат без простоя: новый под поднимается и проходит проверку готовности рядом со
+  # старым, и только потом старый гасится. При Recreate сотрудники видели 503 всё время,
+  # пока новый под тянулся и стартовал, — то есть при каждом обновлении.
+  #
+  # Две реплики живут рядом меньше минуты, и это безопасно: тома привязаны к ноде, а не к
+  # поду, и нода одна; общее состояние лежит в MongoDB и MinIO; расписания в этой сборке
+  # не запускаются вовсе.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: librechat
+  template:
+    metadata:
+      labels:
+        app: librechat
+      annotations:
+        checksum/librechat-yaml: "replace-on-config-change"
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/novip1906/corporate-ai:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3080
+          envFrom:
+            - configMapRef:
+                name: librechat-env
+            - secretRef:
+                name: librechat-secrets
+          resources:
+            requests:
+              memory: "500Mi"
+              cpu: "100m"
+            limits:
+              memory: "1100Mi"
+          volumeMounts:
+            - name: librechat-yaml
+              mountPath: /app/librechat.yaml
+              subPath: librechat.yaml
+              readOnly: true
+            - name: data
+              mountPath: /app/uploads
+              subPath: uploads
+            - name: data
+              mountPath: /app/logs
+              subPath: logs
+            - name: data
+              mountPath: /app/client/public/images
+              subPath: images
+            - name: knowledge-data
+              mountPath: /app/uploads/knowledge
+          # Пробы по HTTP, а не по TCP: порт открывается раньше, чем приложение
+          # начинает обслуживать запросы, и под успевал стать Ready до готовности.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 3080
+            # Приложение открывает порт примерно за десять секунд; ждать двадцать до первой
+            # же проверки — впустую держать старый под лишние секунды на каждом выкате.
+            # Запас остаётся прежним: тридцать попыток раз в десять секунд.
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3080
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3080
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+      volumes:
+        - name: librechat-yaml
+          configMap:
+            name: librechat-yaml
+        - name: data
+          persistentVolumeClaim:
+            claimName: librechat-data
+        - name: knowledge-data
+          persistentVolumeClaim:
+            claimName: knowledge-data

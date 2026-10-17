@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: corporate
+spec:
+  template:
+    spec:
+      containers:
+        - name: keycloak
+          env:
+            - name: KC_HOSTNAME
+              value: "https://auth.example.com"
+          resources:
+            requests:
+              memory: 512Mi
+            limits:
+              memory: 1536Mi
+          volumeMounts:
+            - name: magic-link-jar
+              mountPath: /opt/keycloak/providers/keycloak-magic-link-0.84.jar
+              subPath: keycloak-magic-link-0.84.jar
+              readOnly: true
+      volumes:
+        - name: magic-link-jar
+          configMap:
+            name: keycloak-magic-link-jar

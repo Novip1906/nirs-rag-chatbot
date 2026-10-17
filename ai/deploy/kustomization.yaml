@@ -1,0 +1,25 @@
+# Базовый набор AI-части. Ingress'ы и параметры окружения (адреса, образы, патчи)
+# задаёт корневой оверлей deploy/ в корне репозитория.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: corporate
+
+resources:
+  - 00-namespace.yaml
+  - 10-config.yaml
+  - 20-mongo.yaml
+  - 30-librechat.yaml
+  - 50-vectordb.yaml
+  - 60-rag-api.yaml
+  - 70-keycloak-db.yaml
+  - 71-keycloak.yaml
+  - 80-adminui.yaml
+  - 90-minio.yaml
+
+# Расширение keycloak-magic-link (см. keycloak/providers/README.md) помещается в лимит
+# ConfigMap. Монтируется патчем deploy/patch-keycloak.yaml.
+configMapGenerator:
+  - name: keycloak-magic-link-jar
+    files:
+      - keycloak/providers/keycloak-magic-link-0.84.jar

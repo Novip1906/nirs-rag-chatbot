@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: corporate
+
+resources:
+  - ../ai/deploy
+  - ../admin-api/deploy
+  - ingress.yaml
+  - minio-bucket.yaml
+  - embeddings.yaml
+
+patches:
+  - path: patch-librechat-env.yaml
+  - path: patch-admin-api-config.yaml
+  - path: patch-keycloak.yaml
+  - path: patch-rag-api.yaml

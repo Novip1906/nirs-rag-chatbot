@@ -1,0 +1,10 @@
+export { createDlpFetch, DlpFailureError } from './fetch';
+export type { DlpFetchContext } from './fetch';
+export { createDlpAudit, hashValue } from './audit';
+export type { DlpAudit, DlpAuditDeps, DlpAuditInput } from './audit';
+export { MarkerTable } from './markers';
+export { maskText } from './mask';
+export type { DlpMaskResult } from './mask';
+export { DLP_CATEGORIES } from './types';
+export type { DlpCategory, DlpCategoryMode, DlpMatch, DlpDetectOptions } from './types';
+export { resolveDlpConfig, warnDlpAuditMissing } from './config';

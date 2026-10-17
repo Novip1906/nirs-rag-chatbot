@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: librechat-env
+  namespace: corporate
+data:
+  DOMAIN_CLIENT: "https://ai.example.com"
+  DOMAIN_SERVER: "https://ai.example.com"
+  OPENID_ISSUER: "https://auth.example.com/realms/corporate"
+  ADMIN_PANEL_URL: "https://admin.example.com"
+  ADMIN_SESSION_EXPIRY: "28800000"
+  OPENID_MAX_LOGOUT_URL_LENGTH: "4000"
+  ADMIN_API_NOTIFY_CLIENT: "admin-api-notify"
+  ADMIN_API_NOTIFY_AUDIENCE: "corporate-ai"
+  ADMIN_API_SYNC_MODE: "apply"
+  ADMIN_API_SYNC_MAX_CHANGES: "5"
+  SCHEDULES_SINGLE_PROCESS: "true"

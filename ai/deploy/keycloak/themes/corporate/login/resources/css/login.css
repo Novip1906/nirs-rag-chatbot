@@ -1,0 +1,375 @@
+:root {
+  --nf-bg: #ffffff;
+  --nf-surface: #ffffff;
+  --nf-text: #212121;
+  --nf-text-secondary: #424242;
+  --nf-text-secondary-alt: #595959;
+  --nf-border: #e3e3e3;
+  --nf-accent: #126e6b;
+  --nf-accent-hover: #0a4f53;
+  --nf-error: #b91c1c;
+  --nf-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --nf-bg: #0d0d0d;
+    --nf-surface: #0d0d0d;
+    --nf-text: #ececec;
+    --nf-text-secondary: #cdcdcd;
+    --nf-text-secondary-alt: #999696;
+    --nf-border: #2f2f2f;
+    --nf-accent: #41a79d;
+    --nf-accent-hover: #6dc8b9;
+    --nf-error: #f87171;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body.nf-body {
+  font-family: var(--nf-font);
+  background: var(--nf-bg);
+  color: var(--nf-text);
+}
+
+.nf-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--nf-bg);
+}
+
+.nf-logo {
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.nf-logo img {
+  height: 42px;
+  width: auto;
+  display: block;
+}
+
+.nf-alert {
+  margin: 0 1rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  max-width: 370px;
+  width: 100%;
+}
+
+.nf-card .nf-alert {
+  margin: 0 0 1.25rem;
+  max-width: none;
+}
+
+.nf-alert-error {
+  background: rgba(185, 28, 28, 0.08);
+  color: var(--nf-error);
+  border: 1px solid rgba(185, 28, 28, 0.3);
+}
+
+.nf-alert-success {
+  background: rgba(18, 110, 107, 0.08);
+  color: var(--nf-accent);
+  border: 1px solid rgba(18, 110, 107, 0.3);
+}
+
+.nf-alert-warning,
+.nf-alert-info {
+  background: rgba(66, 66, 66, 0.06);
+  color: var(--nf-text-secondary);
+  border: 1px solid var(--nf-border);
+}
+
+.nf-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 1rem;
+}
+
+.nf-card {
+  width: 100%;
+  max-width: 370px;
+}
+
+.nf-title {
+  margin: 0 0 1.5rem;
+  text-align: center;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--nf-text);
+  user-select: none;
+}
+
+.nf-form {
+  margin-top: 0;
+}
+
+.nf-field {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.nf-field-password {
+  margin-bottom: 0.5rem;
+}
+
+.nf-input {
+  width: 100%;
+  height: auto;
+  box-sizing: border-box;
+  padding: 1.125rem 0.875rem 0.625rem;
+  border-radius: 1rem;
+  border: 1px solid var(--nf-border);
+  background: var(--nf-surface);
+  color: var(--nf-text);
+  font-size: 1rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.nf-field-password .nf-input {
+  padding-right: 3rem;
+}
+
+.nf-input::placeholder {
+  color: transparent;
+}
+
+.nf-input:hover {
+  border-color: var(--nf-border);
+}
+
+.nf-input:focus {
+  border-color: var(--nf-accent);
+}
+
+.nf-input[aria-invalid='true'] {
+  border-color: var(--nf-error);
+}
+
+.nf-label {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.375rem;
+  transform: translateY(0) scale(0.75);
+  transform-origin: 0 0;
+  font-size: 1rem;
+  color: var(--nf-text-secondary-alt);
+  background: var(--nf-surface);
+  padding: 0 0.5rem;
+  transition: all 0.2s;
+  pointer-events: none;
+}
+
+.nf-input:placeholder-shown + .nf-label {
+  top: 50%;
+  transform: translateY(-50%) scale(1);
+}
+
+.nf-input:focus + .nf-label {
+  top: 0.375rem;
+  transform: translateY(0) scale(0.75);
+  color: var(--nf-accent);
+}
+
+.nf-password-toggle {
+  position: absolute;
+  right: 0.5rem;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  height: 2.25rem;
+  width: 2.25rem;
+  border: none;
+  background: transparent;
+  border-radius: 0.75rem;
+  color: var(--nf-text-secondary-alt);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.nf-password-toggle:hover {
+  color: var(--nf-text);
+}
+
+.nf-eye-closed {
+  display: none;
+}
+
+.nf-password-visible .nf-eye-open {
+  display: none;
+}
+
+.nf-password-visible .nf-eye-closed {
+  display: block;
+}
+
+.nf-field-error {
+  display: block;
+  margin: -0.5rem 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--nf-error);
+}
+
+.nf-forgot {
+  margin-bottom: 1rem;
+}
+
+.nf-forgot span {
+  display: inline-flex;
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--nf-text-secondary-alt);
+}
+
+.nf-forgot a {
+  display: inline-flex;
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--nf-accent);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: all 0.2s;
+}
+
+.nf-forgot a:hover {
+  color: var(--nf-accent-hover);
+  text-decoration-color: var(--nf-accent-hover);
+}
+
+.nf-checkbox-field {
+  margin-bottom: 1rem;
+}
+
+.nf-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--nf-text-secondary);
+  cursor: pointer;
+}
+
+.nf-checkbox-label input[type='checkbox'] {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--nf-accent);
+  cursor: pointer;
+}
+
+.nf-submit {
+  margin-top: 1.5rem;
+}
+
+.nf-submit-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.nf-submit-row .nf-button {
+  flex: 1;
+}
+
+.nf-button {
+  width: 100%;
+  height: 3rem;
+  border-radius: 1rem;
+  border: none;
+  background: var(--nf-accent);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.nf-button:hover {
+  background: var(--nf-accent-hover);
+}
+
+.nf-button-secondary {
+  background: transparent;
+  border: 1px solid var(--nf-border);
+  color: var(--nf-text);
+}
+
+.nf-button-secondary:hover {
+  background: rgba(66, 66, 66, 0.06);
+  border-color: var(--nf-text-secondary-alt);
+}
+
+.nf-instruction {
+  margin: 0 0 1.5rem;
+  text-align: center;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--nf-text-secondary);
+}
+
+.nf-instruction a {
+  color: var(--nf-accent);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: all 0.2s;
+}
+
+.nf-instruction a:hover {
+  color: var(--nf-accent-hover);
+  text-decoration-color: var(--nf-accent-hover);
+}
+
+.nf-trace-id {
+  margin: 0 0 1.5rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--nf-text-secondary-alt);
+  word-break: break-all;
+}
+
+.nf-info {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--nf-text-secondary);
+}
+
+.nf-back-link {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.nf-back-link a {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--nf-accent);
+  text-decoration: none;
+}
+
+.nf-back-link a:hover {
+  color: var(--nf-accent-hover);
+  text-decoration: underline;
+}

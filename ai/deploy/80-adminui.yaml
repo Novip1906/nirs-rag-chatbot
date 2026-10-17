@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: adminui
+  namespace: corporate
+spec:
+  selector:
+    app: adminui
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adminui
+  namespace: corporate
+spec:
+  replicas: 1
+  # Явно, а не умолчанием: при одной реплике умолчание разрешает погасить единственный под
+  # раньше, чем поднимется новый, и админка на это время отвечает 503.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: adminui
+  template:
+    metadata:
+      labels:
+        app: adminui
+    spec:
+      containers:
+        - name: adminui
+          image: ghcr.io/novip1906/corporate-admin-ui:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4

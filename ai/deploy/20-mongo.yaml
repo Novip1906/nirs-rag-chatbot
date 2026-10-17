@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: corporate
+spec:
+  clusterIP: None
+  selector:
+    app: mongodb
+  ports:
+    - port: 27017
+      targetPort: 27017
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: corporate
+spec:
+  serviceName: mongodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:8.0.20
+          args:
+            - "--wiredTigerCacheSizeGB"
+            - "0.25"
+            - "--bind_ip_all"
+          ports:
+            - containerPort: 27017
+          # 420Mi не хватало: MongoDB в покое держит ~220Mi, а база знаний добавила
+          # к этому полный текст документов и текстовый индекс по нему. Плюс любой
+          # `kubectl exec ... mongosh` запускает Node внутри того же контейнера и
+          # съедает ещё ~150Mi — на 420Mi этого достаточно, чтобы получить OOMKilled
+          # на живой базе. Проверено 2026-08-26: под ушёл в рестарт ровно так.
+          resources:
+            requests:
+              memory: "200Mi"
+              cpu: "50m"
+            limits:
+              memory: "700Mi"
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          livenessProbe:
+            exec:
+              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi

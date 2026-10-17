@@ -1,0 +1,994 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: corporate
+spec:
+  selector:
+    app: keycloak
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+data:
+  error.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.registrationLayout displayMessage=false; section>
+        <#if section = "header">
+            ${kcSanitize(msg("errorTitle"))?no_esc}
+        <#elseif section = "form">
+            <p class="nf-instruction">${kcSanitize(message.summary)?no_esc}</p>
+            <#if traceId??>
+                <p class="nf-trace-id">${msg("traceIdSupportMessage", traceId)}</p>
+            </#if>
+            <#if !skipLink?? && client?? && client.baseUrl?has_content>
+                <div class="nf-back-link">
+                    <a id="backToApplication" href="${client.baseUrl}">${msg("backToApplication")}</a>
+                </div>
+            </#if>
+        </#if>
+    </@layout.registrationLayout>
+  info.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.registrationLayout displayMessage=false; section>
+        <#if section = "header">
+            <#if messageHeader??>${kcSanitize(msg("${messageHeader}"))?no_esc}<#else>${message.summary}</#if>
+        <#elseif section = "form">
+            <#if messageHeader?? || requiredActions??>
+                <p class="nf-instruction">${message.summary}<#if requiredActions??><#list requiredActions>: <b><#items as reqActionItem>${kcSanitize(msg("requiredAction.${reqActionItem}"))?no_esc}<#sep>, </#items></b></#list></#if></p>
+            </#if>
+            <#if !skipLink??>
+                <#if pageRedirectUri?has_content>
+                    <div class="nf-back-link">
+                        <a id="backToApplication" href="${pageRedirectUri}">${msg("backToApplication")}</a>
+                    </div>
+                <#elseif actionUri?has_content>
+                    <div class="nf-back-link">
+                        <a href="${actionUri}">${msg("proceedWithAction")}</a>
+                    </div>
+                <#elseif (client.baseUrl)?has_content>
+                    <div class="nf-back-link">
+                        <a id="backToApplication" href="${client.baseUrl}">${msg("backToApplication")}</a>
+                    </div>
+                </#if>
+            </#if>
+        </#if>
+    </@layout.registrationLayout>
+  login-page-expired.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.registrationLayout; section>
+        <#if section = "header">
+            ${msg("pageExpiredTitle")}
+        <#elseif section = "form">
+            <p class="nf-instruction">
+                ${msg("pageExpiredMsg1")} <a id="loginRestartLink" href="${url.loginRestartFlowUrl}">${msg("doClickHere")}</a>.<br/>
+                ${msg("pageExpiredMsg2")} <a id="loginContinueLink" href="${url.loginAction}">${msg("doClickHere")}</a>.
+            </p>
+        </#if>
+    </@layout.registrationLayout>
+  login-reset-password.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.registrationLayout displayMessage=!messagesPerField.existsError('username'); section>
+        <#if section = "header">
+            ${msg("emailForgotTitle")}
+        <#elseif section = "form">
+            <p class="nf-instruction">${msg("emailInstruction")}</p>
+            <form id="kc-reset-password-form" class="nf-form" action="${url.loginAction}" method="post">
+                <div class="nf-field">
+                    <input type="text" id="username" name="username" class="nf-input" autofocus value="${(auth.attemptedUsername)!''}" placeholder=" "
+                           aria-invalid="<#if messagesPerField.existsError('username')>true</#if>" />
+                    <label for="username" class="nf-label">
+                        <#if !realm.loginWithEmailAllowed>${msg("username")}<#elseif !realm.registrationEmailAsUsername>${msg("usernameOrEmail")}<#else>${msg("email")}</#if>
+                    </label>
+                </div>
+
+                <#if messagesPerField.existsError('username')>
+                    <span class="nf-field-error">${kcSanitize(messagesPerField.get('username'))?no_esc}</span>
+                </#if>
+
+                <div class="nf-submit">
+                    <input class="nf-button" type="submit" value="${msg("doSubmit")}"/>
+                </div>
+            </form>
+            <div class="nf-back-link">
+                <a href="${url.loginUrl}">${msg("backToLogin")}</a>
+            </div>
+        </#if>
+    </@layout.registrationLayout>
+  login-update-password.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.registrationLayout displayMessage=!messagesPerField.existsError('password','password-confirm'); section>
+        <#if section = "header">
+            ${msg("updatePasswordTitle")}
+        <#elseif section = "form">
+            <form id="kc-passwd-update-form" class="nf-form" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post">
+                <div class="nf-field nf-field-password">
+                    <input type="password" id="password-new" name="password-new" class="nf-input" autofocus autocomplete="new-password" placeholder=" "
+                           aria-invalid="<#if messagesPerField.existsError('password','password-confirm')>true</#if>" />
+                    <label for="password-new" class="nf-label">${msg("passwordNew")}</label>
+                    <button type="button" class="nf-password-toggle" aria-label="${msg("showPassword")}" onclick="nfTogglePassword(this)">
+                        <svg class="nf-eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="nf-eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.6 21.6 0 0 1 5.06-6.06M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.6 21.6 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <#if messagesPerField.existsError('password')>
+                    <span class="nf-field-error">${kcSanitize(messagesPerField.get('password'))?no_esc}</span>
+                </#if>
+
+                <div class="nf-field nf-field-password">
+                    <input type="password" id="password-confirm" name="password-confirm" class="nf-input" autocomplete="new-password" placeholder=" "
+                           aria-invalid="<#if messagesPerField.existsError('password-confirm')>true</#if>" />
+                    <label for="password-confirm" class="nf-label">${msg("passwordConfirm")}</label>
+                    <button type="button" class="nf-password-toggle" aria-label="${msg("showPassword")}" onclick="nfTogglePassword(this)">
+                        <svg class="nf-eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="nf-eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.6 21.6 0 0 1 5.06-6.06M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.6 21.6 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <#if messagesPerField.existsError('password-confirm')>
+                    <span class="nf-field-error">${kcSanitize(messagesPerField.get('password-confirm'))?no_esc}</span>
+                </#if>
+
+                <input type="hidden" name="logout-sessions" value="on"/>
+
+                <#if isAppInitiatedAction??>
+                    <div class="nf-submit-row">
+                        <input class="nf-button" type="submit" name="login" value="${msg("doSubmit")}"/>
+                        <button class="nf-button nf-button-secondary" type="submit" name="cancel-aia" value="true">${msg("doCancel")}</button>
+                    </div>
+                <#else>
+                    <div class="nf-submit">
+                        <input class="nf-button" type="submit" name="login" value="${msg("doSubmit")}"/>
+                    </div>
+                </#if>
+            </form>
+        </#if>
+    </@layout.registrationLayout>
+  login.css: |
+    :root {
+      --nf-bg: #ffffff;
+      --nf-surface: #ffffff;
+      --nf-text: #212121;
+      --nf-text-secondary: #424242;
+      --nf-text-secondary-alt: #595959;
+      --nf-border: #e3e3e3;
+      --nf-accent: #126e6b;
+      --nf-accent-hover: #0a4f53;
+      --nf-error: #b91c1c;
+      --nf-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --nf-bg: #0d0d0d;
+        --nf-surface: #0d0d0d;
+        --nf-text: #ececec;
+        --nf-text-secondary: #cdcdcd;
+        --nf-text-secondary-alt: #999696;
+        --nf-border: #2f2f2f;
+        --nf-accent: #41a79d;
+        --nf-accent-hover: #6dc8b9;
+        --nf-error: #f87171;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body.nf-body {
+      font-family: var(--nf-font);
+      background: var(--nf-bg);
+      color: var(--nf-text);
+    }
+
+    .nf-page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--nf-bg);
+    }
+
+    .nf-logo {
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .nf-logo img {
+      height: 42px;
+      width: auto;
+      display: block;
+    }
+
+    .nf-alert {
+      margin: 0 1rem 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 0.75rem;
+      font-size: 0.875rem;
+      max-width: 370px;
+      width: 100%;
+    }
+
+    .nf-card .nf-alert {
+      margin: 0 0 1.25rem;
+      max-width: none;
+    }
+
+    .nf-alert-error {
+      background: rgba(185, 28, 28, 0.08);
+      color: var(--nf-error);
+      border: 1px solid rgba(185, 28, 28, 0.3);
+    }
+
+    .nf-alert-success {
+      background: rgba(18, 110, 107, 0.08);
+      color: var(--nf-accent);
+      border: 1px solid rgba(18, 110, 107, 0.3);
+    }
+
+    .nf-alert-warning,
+    .nf-alert-info {
+      background: rgba(66, 66, 66, 0.06);
+      color: var(--nf-text-secondary);
+      border: 1px solid var(--nf-border);
+    }
+
+    .nf-main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 1rem;
+    }
+
+    .nf-card {
+      width: 100%;
+      max-width: 370px;
+    }
+
+    .nf-title {
+      margin: 0 0 1.5rem;
+      text-align: center;
+      font-size: 1.75rem;
+      font-weight: 600;
+      color: var(--nf-text);
+      user-select: none;
+    }
+
+    .nf-form {
+      margin-top: 0;
+    }
+
+    .nf-field {
+      position: relative;
+      margin-bottom: 1rem;
+    }
+
+    .nf-field-password {
+      margin-bottom: 0.5rem;
+    }
+
+    .nf-input {
+      width: 100%;
+      height: auto;
+      box-sizing: border-box;
+      padding: 1.125rem 0.875rem 0.625rem;
+      border-radius: 1rem;
+      border: 1px solid var(--nf-border);
+      background: var(--nf-surface);
+      color: var(--nf-text);
+      font-size: 1rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .nf-field-password .nf-input {
+      padding-right: 3rem;
+    }
+
+    .nf-input::placeholder {
+      color: transparent;
+    }
+
+    .nf-input:hover {
+      border-color: var(--nf-border);
+    }
+
+    .nf-input:focus {
+      border-color: var(--nf-accent);
+    }
+
+    .nf-input[aria-invalid='true'] {
+      border-color: var(--nf-error);
+    }
+
+    .nf-label {
+      position: absolute;
+      left: 0.75rem;
+      top: 0.375rem;
+      transform: translateY(0) scale(0.75);
+      transform-origin: 0 0;
+      font-size: 1rem;
+      color: var(--nf-text-secondary-alt);
+      background: var(--nf-surface);
+      padding: 0 0.5rem;
+      transition: all 0.2s;
+      pointer-events: none;
+    }
+
+    .nf-input:placeholder-shown + .nf-label {
+      top: 50%;
+      transform: translateY(-50%) scale(1);
+    }
+
+    .nf-input:focus + .nf-label {
+      top: 0.375rem;
+      transform: translateY(0) scale(0.75);
+      color: var(--nf-accent);
+    }
+
+    .nf-password-toggle {
+      position: absolute;
+      right: 0.5rem;
+      top: 0;
+      bottom: 0;
+      margin: auto 0;
+      height: 2.25rem;
+      width: 2.25rem;
+      border: none;
+      background: transparent;
+      border-radius: 0.75rem;
+      color: var(--nf-text-secondary-alt);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .nf-password-toggle:hover {
+      color: var(--nf-text);
+    }
+
+    .nf-eye-closed {
+      display: none;
+    }
+
+    .nf-password-visible .nf-eye-open {
+      display: none;
+    }
+
+    .nf-password-visible .nf-eye-closed {
+      display: block;
+    }
+
+    .nf-field-error {
+      display: block;
+      margin: -0.5rem 0 0.75rem;
+      font-size: 0.875rem;
+      color: var(--nf-error);
+    }
+
+    .nf-forgot {
+      margin-bottom: 1rem;
+    }
+
+    .nf-forgot span {
+      display: inline-flex;
+      padding: 0.25rem;
+      font-size: 0.875rem;
+      color: var(--nf-text-secondary-alt);
+    }
+
+    .nf-forgot a {
+      display: inline-flex;
+      padding: 0.25rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--nf-accent);
+      text-decoration: underline;
+      text-decoration-color: transparent;
+      transition: all 0.2s;
+    }
+
+    .nf-forgot a:hover {
+      color: var(--nf-accent-hover);
+      text-decoration-color: var(--nf-accent-hover);
+    }
+
+    .nf-checkbox-field {
+      margin-bottom: 1rem;
+    }
+
+    .nf-checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--nf-text-secondary);
+      cursor: pointer;
+    }
+
+    .nf-checkbox-label input[type='checkbox'] {
+      width: 1.125rem;
+      height: 1.125rem;
+      accent-color: var(--nf-accent);
+      cursor: pointer;
+    }
+
+    .nf-submit {
+      margin-top: 1.5rem;
+    }
+
+    .nf-submit-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .nf-submit-row .nf-button {
+      flex: 1;
+    }
+
+    .nf-button {
+      width: 100%;
+      height: 3rem;
+      border-radius: 1rem;
+      border: none;
+      background: var(--nf-accent);
+      color: #ffffff;
+      font-size: 1rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .nf-button:hover {
+      background: var(--nf-accent-hover);
+    }
+
+    .nf-button-secondary {
+      background: transparent;
+      border: 1px solid var(--nf-border);
+      color: var(--nf-text);
+    }
+
+    .nf-button-secondary:hover {
+      background: rgba(66, 66, 66, 0.06);
+      border-color: var(--nf-text-secondary-alt);
+    }
+
+    .nf-instruction {
+      margin: 0 0 1.5rem;
+      text-align: center;
+      font-size: 0.9375rem;
+      line-height: 1.5;
+      color: var(--nf-text-secondary);
+    }
+
+    .nf-instruction a {
+      color: var(--nf-accent);
+      font-weight: 500;
+      text-decoration: underline;
+      text-decoration-color: transparent;
+      transition: all 0.2s;
+    }
+
+    .nf-instruction a:hover {
+      color: var(--nf-accent-hover);
+      text-decoration-color: var(--nf-accent-hover);
+    }
+
+    .nf-trace-id {
+      margin: 0 0 1.5rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--nf-text-secondary-alt);
+      word-break: break-all;
+    }
+
+    .nf-info {
+      margin-top: 1rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--nf-text-secondary);
+    }
+
+    .nf-back-link {
+      margin-top: 1rem;
+      text-align: center;
+    }
+
+    .nf-back-link a {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--nf-accent);
+      text-decoration: none;
+    }
+
+    .nf-back-link a:hover {
+      color: var(--nf-accent-hover);
+      text-decoration: underline;
+    }
+  login.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.registrationLayout displayMessage=!messagesPerField.existsError('username','password'); section>
+        <#if section = "header">
+            ${msg("loginAccountTitle")}
+        <#elseif section = "form">
+            <form id="kc-form-login" class="nf-form" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post">
+                <div class="nf-field">
+                    <input tabindex="1" id="username" class="nf-input" name="username" value="${(login.username!'')}" type="text"
+                           <#if !(login.username!'')?has_content>autofocus</#if> autocomplete="<#if usernameHidden??>off<#else>email</#if>"
+                           aria-invalid="<#if messagesPerField.existsError('username','password')>true</#if>"
+                           placeholder=" " />
+                    <label for="username" class="nf-label">
+                        <#if !realm.loginWithEmailAllowed>${msg("username")}<#elseif !realm.registrationEmailAsUsername>${msg("usernameOrEmail")}<#else>${msg("email")}</#if>
+                    </label>
+                </div>
+
+                <div class="nf-field nf-field-password">
+                    <input tabindex="2" id="password" class="nf-input" name="password" type="password" autocomplete="current-password" placeholder=" "
+                           <#if (login.username!'')?has_content>autofocus</#if>
+                           aria-invalid="<#if messagesPerField.existsError('username','password')>true</#if>" />
+                    <label for="password" class="nf-label">${msg("password")}</label>
+                    <button type="button" class="nf-password-toggle" aria-label="${msg("showPassword")!'Show password'}" onclick="nfTogglePassword(this)">
+                        <svg class="nf-eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="nf-eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.6 21.6 0 0 1 5.06-6.06M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.6 21.6 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <#if messagesPerField.existsError('username','password')>
+                    <span class="nf-field-error">${kcSanitize(messagesPerField.getFirstError('username','password'))?no_esc}</span>
+                </#if>
+
+                <div class="nf-forgot">
+                    <#if realm.resetPasswordAllowed>
+                        <a tabindex="5" href="${url.loginResetCredentialsUrl}">${msg("doForgotPassword")}</a>
+                    <#else>
+                        <span>${msg("forgotPasswordContactAdmin")}</span>
+                    </#if>
+                </div>
+
+                <div class="nf-submit">
+                    <#if realm.rememberMe>
+                        <input type="hidden" name="rememberMe" value="on"/>
+                    </#if>
+                    <input type="hidden" id="id-hidden-input" name="credentialId" value="<#if auth?has_content>${auth.selectedCredential!}</#if>"/>
+                    <input tabindex="4" class="nf-button" name="login" id="kc-login" type="submit" value="${msg("doLogIn")}"/>
+                </div>
+            </form>
+        </#if>
+    </@layout.registrationLayout>
+  login.js: |
+    function nfTogglePassword(btn) {
+      var wrapper = btn.closest('.nf-field-password');
+      var input = wrapper.querySelector('input');
+      var isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      wrapper.classList.toggle('nf-password-visible', isPassword);
+    }
+  logo.svg: |
+    <svg xmlns="http://www.w3.org/2000/svg" width="194" height="53" viewBox="0 0 194 53" fill="none" role="img" aria-label="Corporate">
+    <defs><linearGradient id="corporate-logo" x1="39" y1="15.5" x2="17" y2="37.5" gradientUnits="userSpaceOnUse"><stop stop-color="#34D3B5"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs>
+    <rect width="194" height="53" rx="12" fill="#0B1B33"/>
+    <path d="M36.43 19.43 A11 11 0 1 0 36.43 33.57" stroke="url(#corporate-logo)" stroke-width="5.5" stroke-linecap="round" fill="none"/><circle cx="38.45" cy="26.5" r="3.0250000000000004" fill="url(#corporate-logo)"/>
+    <path transform="translate(54 35)" fill="#FFFFFF" d="M7.85 0.31Q5.77 0.31 4.24 -0.58Q2.7 -1.48 1.86 -3.12Q1.01 -4.76 1.01 -6.94Q1.01 -9.13 1.86 -10.75Q2.7 -12.38 4.24 -13.29Q5.77 -14.2 7.85 -14.2Q9.62 -14.2 11 -13.57Q12.38 -12.95 13.25 -11.79Q14.12 -10.63 14.33 -8.97L10.89 -8.79Q10.69 -10.11 9.87 -10.8Q9.05 -11.49 7.85 -11.49Q6.24 -11.49 5.36 -10.28Q4.47 -9.07 4.47 -6.94Q4.47 -4.78 5.36 -3.59Q6.24 -2.39 7.85 -2.39Q9.07 -2.39 9.89 -3.09Q10.71 -3.8 10.89 -5.28L14.33 -5.12Q14.12 -3.46 13.26 -2.24Q12.4 -1.01 11.02 -0.35Q9.65 0.31 7.85 0.31Z M22.93 0.31Q20.88 0.31 19.33 -0.58Q17.78 -1.48 16.94 -3.12Q16.09 -4.76 16.09 -6.94Q16.09 -9.15 16.94 -10.78Q17.78 -12.4 19.33 -13.3Q20.88 -14.2 22.93 -14.2Q24.99 -14.2 26.52 -13.3Q28.05 -12.4 28.9 -10.78Q29.74 -9.15 29.74 -6.94Q29.74 -4.76 28.9 -3.12Q28.05 -1.48 26.52 -0.58Q24.99 0.31 22.93 0.31ZM22.93 -2.39Q24.54 -2.39 25.41 -3.59Q26.29 -4.78 26.29 -6.94Q26.29 -9.07 25.41 -10.28Q24.54 -11.49 22.93 -11.49Q21.32 -11.49 20.44 -10.28Q19.55 -9.07 19.55 -6.94Q19.55 -4.78 20.44 -3.59Q21.32 -2.39 22.93 -2.39Z M32.58 0V-13.88H35.7L35.78 -11.23Q36.11 -12.38 36.74 -13Q37.6 -13.88 39.1 -13.88H40.38V-11.02H39.08Q38.01 -11.02 37.31 -10.71Q36.61 -10.4 36.26 -9.74Q35.91 -9.07 35.91 -8.01V0Z M43.21 3.9V-13.88H46.41L46.46 -11.83Q46.98 -12.82 47.87 -13.42Q49.04 -14.2 50.62 -14.2Q52.6 -14.2 53.91 -13.21Q55.22 -12.22 55.87 -10.58Q56.52 -8.94 56.52 -6.94Q56.52 -4.94 55.86 -3.3Q55.2 -1.66 53.88 -0.68Q52.57 0.31 50.6 0.31Q49.56 0.31 48.66 -0.05Q47.76 -0.42 47.14 -1.09Q46.77 -1.46 46.54 -1.9V3.9ZM49.82 -2.39Q51.32 -2.39 52.19 -3.6Q53.07 -4.81 53.07 -6.94Q53.07 -9.07 52.19 -10.28Q51.32 -11.49 49.82 -11.49Q48.8 -11.49 48.07 -10.98Q47.35 -10.48 46.94 -9.46Q46.54 -8.45 46.54 -6.94Q46.54 -5.43 46.93 -4.42Q47.32 -3.41 48.06 -2.9Q48.8 -2.39 49.82 -2.39Z M65.39 0.31Q63.34 0.31 61.79 -0.58Q60.24 -1.48 59.4 -3.12Q58.55 -4.76 58.55 -6.94Q58.55 -9.15 59.4 -10.78Q60.24 -12.4 61.79 -13.3Q63.34 -14.2 65.39 -14.2Q67.44 -14.2 68.98 -13.3Q70.51 -12.4 71.36 -10.78Q72.2 -9.15 72.2 -6.94Q72.2 -4.76 71.36 -3.12Q70.51 -1.48 68.98 -0.58Q67.44 0.31 65.39 0.31ZM65.39 -2.39Q67 -2.39 67.87 -3.59Q68.74 -4.78 68.74 -6.94Q68.74 -9.07 67.87 -10.28Q67 -11.49 65.39 -11.49Q63.78 -11.49 62.89 -10.28Q62.01 -9.07 62.01 -6.94Q62.01 -4.78 62.89 -3.59Q63.78 -2.39 65.39 -2.39Z M75.04 0V-13.88H78.16L78.23 -11.23Q78.57 -12.38 79.2 -13Q80.05 -13.88 81.56 -13.88H82.84V-11.02H81.54Q80.47 -11.02 79.77 -10.71Q79.07 -10.4 78.71 -9.74Q78.36 -9.07 78.36 -8.01V0Z M89.7 0.31Q87.52 0.31 86.19 -0.69Q84.86 -1.69 84.86 -3.48Q84.86 -5.28 85.98 -6.29Q87.1 -7.31 89.39 -7.75L93.99 -8.66Q93.99 -10.14 93.31 -10.88Q92.64 -11.62 91.31 -11.62Q90.12 -11.62 89.43 -11.06Q88.74 -10.5 88.48 -9.46L85.1 -9.62Q85.51 -11.83 87.13 -13.01Q88.74 -14.2 91.31 -14.2Q94.28 -14.2 95.8 -12.7Q97.32 -11.21 97.32 -8.42V-3.38Q97.32 -2.83 97.51 -2.63Q97.71 -2.42 98.1 -2.42H98.54V0Q98.38 0.05 98.03 0.08Q97.68 0.1 97.32 0.1Q96.46 0.1 95.78 -0.17Q95.11 -0.44 94.74 -1.14Q94.54 -1.53 94.43 -2.13Q94.2 -1.64 93.78 -1.2Q93.08 -0.47 92.04 -0.08Q91 0.31 89.7 0.31ZM90.38 -2.11Q91.49 -2.11 92.3 -2.55Q93.11 -2.99 93.55 -3.77Q93.99 -4.55 93.99 -5.62V-6.4L90.4 -5.67Q89.28 -5.43 88.8 -4.98Q88.32 -4.52 88.32 -3.8Q88.32 -2.99 88.85 -2.55Q89.39 -2.11 90.38 -2.11Z M106.31 0Q104.23 0 103.26 -0.96Q102.28 -1.92 102.28 -3.98V-11.31H100.1V-13.88H102.28V-17.13H105.61V-13.88H109.28V-11.31H105.61V-4.29Q105.61 -3.33 106.03 -2.95Q106.44 -2.57 107.33 -2.57H109.28V0Z M117.86 0.31Q115.78 0.31 114.24 -0.58Q112.71 -1.48 111.88 -3.12Q111.05 -4.76 111.05 -6.94Q111.05 -9.13 111.88 -10.75Q112.71 -12.38 114.23 -13.29Q115.75 -14.2 117.78 -14.2Q119.76 -14.2 121.25 -13.31Q122.75 -12.43 123.55 -10.76Q124.36 -9.1 124.36 -6.76V-6.01H114.5Q114.61 -4.19 115.5 -3.26Q116.4 -2.34 117.88 -2.34Q119 -2.34 119.74 -2.85Q120.48 -3.35 120.77 -4.26L124.18 -4.06Q123.6 -2.03 121.93 -0.86Q120.25 0.31 117.86 0.31ZM114.5 -8.24H120.93Q120.82 -9.93 119.96 -10.75Q119.11 -11.57 117.78 -11.57Q116.45 -11.57 115.58 -10.71Q114.71 -9.85 114.5 -8.24Z"/>
+    </svg>
+  logout-confirm.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.registrationLayout; section>
+        <#if section = "header">
+            ${msg("logoutConfirmTitle")}
+        <#elseif section = "form">
+            <p class="nf-instruction">${msg("logoutConfirmHeader")}</p>
+
+            <form id="kc-logout-confirm-form" class="nf-form" action="${url.logoutConfirmAction}" onsubmit="confirmLogout.disabled = true; return true;" method="POST">
+                <input type="hidden" name="session_code" value="${logoutConfirm.code}">
+                <div class="nf-submit">
+                    <input class="nf-button" name="confirmLogout" id="kc-logout" type="submit" value="${msg("doLogout")}"/>
+                </div>
+            </form>
+
+            <#if !logoutConfirm.skipLink && (client.baseUrl)?has_content>
+                <div class="nf-back-link">
+                    <a href="${client.baseUrl}">${msg("backToApplication")}</a>
+                </div>
+            </#if>
+        </#if>
+    </@layout.registrationLayout>
+  messages_en.properties: |
+    forgotPasswordContactAdmin=Forgot your password? Contact your administrator
+    emailInstruction=Enter the email you sign in with and we will send you a link to reset your password.
+    emailSentMessage=If this email is registered, we have sent it a link to reset your password.
+    emailSendErrorMessage=Could not send the email. Try again later or contact your administrator.
+    expiredActionTokenNoSessionMessage=The link has expired or has already been used. Request a password reset again.
+    expiredActionTokenSessionExistsMessage=The link has expired or has already been used. Request a password reset again.
+    expiredActionMessage=The link or page has expired. Please start over.
+    accountUpdatedTitle=Password changed
+    accountUpdatedMessage=You can now sign in with your new password.
+    errorTitle=Something went wrong
+    backToApplication=Back to the application
+    updatePasswordTitle=Set a password
+    updatePasswordMessage=Choose a password to sign in to Corporate AI.
+  messages_ru.properties: |
+    loginAccountTitle=Добро пожаловать
+    email=Адрес электронной почты
+    usernameOrEmail=Адрес электронной почты
+    username=Адрес электронной почты
+    password=Пароль
+    doLogIn=Продолжить
+    doForgotPassword=Забыли пароль?
+    forgotPasswordContactAdmin=Забыли пароль? Обратитесь к администратору
+    emailForgotTitle=Сбросить пароль
+    emailInstruction=Укажите почту, с которой входите, и мы пришлём на неё ссылку для смены пароля.
+    emailSentMessage=Если такая почта есть в системе, мы отправили на неё письмо со ссылкой для смены пароля.
+    emailSendErrorMessage=Не получилось отправить письмо. Попробуйте позже или обратитесь к администратору.
+    expiredActionTokenNoSessionMessage=Ссылка устарела или уже использована. Запросите сброс пароля ещё раз.
+    expiredActionTokenSessionExistsMessage=Ссылка устарела или уже использована. Запросите сброс пароля ещё раз.
+    expiredActionMessage=Ссылка или страница устарела. Начните заново.
+    accountUpdatedTitle=Пароль изменён
+    accountUpdatedMessage=Теперь можно войти с новым паролем.
+    errorTitle=Что-то пошло не так
+    backToApplication=Вернуться в приложение
+    doSubmit=Продолжить
+    backToLogin=Вернуться к авторизации
+    updatePasswordTitle=Задайте пароль
+    updatePasswordMessage=Придумайте пароль для входа в Corporate AI.
+  template.ftl: |
+    <#macro registrationLayout bodyClass="" displayInfo=false displayMessage=true displayRequiredFields=false displayWide=false showAnotherWayIfPresent=true>
+    <!DOCTYPE html>
+    <html<#if realm.internationalizationEnabled> lang="${locale.currentLanguageTag}"</#if>>
+
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <meta name="robots" content="noindex, nofollow">
+        <#assign nfPageTitle><#nested "title"></#assign>
+        <title><#if nfPageTitle?has_content>${nfPageTitle}<#else>${msg("loginTitle",(realm.displayName!''))}</#if></title>
+        <#if properties.styles?has_content>
+            <#list properties.styles?split(' ') as style>
+                <link href="${url.resourcesPath}/${style}" rel="stylesheet" />
+            </#list>
+        </#if>
+        <#if properties.scripts?has_content>
+            <#list properties.scripts?split(' ') as script>
+                <script src="${url.resourcesPath}/${script}" type="text/javascript"></script>
+            </#list>
+        </#if>
+        <script type="module">
+            <#outputformat "JavaScript">
+            import { startSessionPolling } from ${(url.resourcesPath + "/js/authChecker.js")?c};
+
+            startSessionPolling(
+                ${url.ssoLoginInOtherTabsUrl?c}
+            );
+            </#outputformat>
+        </script>
+        <#if authenticationSession??>
+            <script type="module">
+                <#outputformat "JavaScript">
+                import { checkAuthSession } from ${(url.resourcesPath + "/js/authChecker.js")?c};
+
+                checkAuthSession(
+                    ${authenticationSession.authSessionIdHash?c}
+                );
+                </#outputformat>
+            </script>
+        </#if>
+    </head>
+
+    <body class="nf-body">
+        <div class="nf-page">
+            <div class="nf-logo">
+                <img src="${url.resourcesPath}/img/logo.svg" alt="Corporate AI" />
+            </div>
+            <main class="nf-main">
+                <div class="nf-card">
+                    <h1 class="nf-title"><#nested "header"></h1>
+                    <#if displayMessage && message?has_content && (message.type != 'warning' || !isAppInitiatedAction??)>
+                        <div class="nf-alert nf-alert-${message.type}">
+                            <span>${kcSanitize(message.summary)?no_esc}</span>
+                        </div>
+                    </#if>
+                    <#nested "form">
+                    <#if displayInfo>
+                        <div class="nf-info"><#nested "info"></div>
+                    </#if>
+                </div>
+            </main>
+        </div>
+    </body>
+    </html>
+    </#macro>
+  theme.properties: |
+    parent=keycloak
+    import=common/keycloak
+    styles=css/login.css?v=20260927
+    scripts=js/login.js
+kind: ConfigMap
+metadata:
+  name: keycloak-theme-corporate
+  namespace: corporate
+---
+apiVersion: v1
+data:
+  messages_en.properties: |
+    passwordResetSubject=Corporate AI password reset
+    passwordResetTitle=Password reset
+    passwordResetIntro=We received a request to reset the password for your Corporate AI account. To set a new password, click the button.
+    passwordResetButton=Set a new password
+    passwordResetExpiration=The link is valid for {0} and works only once.
+    passwordResetIgnore=If you did not request a reset, just ignore this email: your password will stay the same.
+    passwordResetFallback=If the button does not work, copy the link into your browser address bar:
+    passwordResetBody=We received a request to reset the password for your Corporate AI account.\n\nTo set a new password, open the link:\n{0}\n\nThe link is valid for {3} and works only once.\n\nIf you did not request a reset, just ignore this email: your password will stay the same.
+    magicLinkSubject=You''re invited to Corporate AI
+    magicLinkBody=You have been invited to Corporate AI.\n\nTo set a password and sign in, open the link:\n{0}\n\nThe link is single-use and valid for 7 days.\n\nIf you were not expecting this invite, just ignore this email.
+    magicLinkTitle=You''re invited to Corporate AI
+    magicLinkIntro=An administrator created an account for you. To get started, set a password using the link below.
+    magicLinkButton=Set a password
+    magicLinkExpiration=The link is single-use and valid for 7 days.
+    magicLinkIgnore=If you were not expecting this invite, just ignore this email.
+    magicLinkFallback=If the button does not work, copy the link into your browser address bar:
+  messages_ru.properties: |
+    passwordResetSubject=Сброс пароля в Corporate AI
+    passwordResetTitle=Сброс пароля
+    passwordResetIntro=Мы получили запрос на сброс пароля от вашей учётной записи в Corporate AI. Чтобы задать новый пароль, нажмите на кнопку.
+    passwordResetButton=Задать новый пароль
+    passwordResetExpiration=Ссылка действует {0} и сработает только один раз.
+    passwordResetIgnore=Если вы не запрашивали сброс, просто проигнорируйте это письмо: пароль останется прежним.
+    passwordResetFallback=Если кнопка не нажимается, скопируйте ссылку в адресную строку браузера:
+    passwordResetBody=Мы получили запрос на сброс пароля от вашей учётной записи в Corporate AI.\n\nЧтобы задать новый пароль, перейдите по ссылке:\n{0}\n\nСсылка действует {3} и сработает только один раз.\n\nЕсли вы не запрашивали сброс, просто проигнорируйте это письмо: пароль останется прежним.
+    magicLinkSubject=Приглашение в Corporate AI
+    magicLinkBody=Вас пригласили в Corporate AI.\n\nЧтобы задать пароль и войти, перейдите по ссылке:\n{0}\n\nСсылка одноразовая и действует 7 дней.\n\nЕсли вы не ожидали этого приглашения, просто проигнорируйте это письмо.
+    magicLinkTitle=Вас пригласили в Corporate AI
+    magicLinkIntro=Администратор создал для вас учётную запись. Чтобы начать работать, задайте пароль по ссылке.
+    magicLinkButton=Задать пароль
+    magicLinkExpiration=Ссылка одноразовая и действует 7 дней.
+    magicLinkIgnore=Если вы не ожидали этого приглашения, просто проигнорируйте это письмо.
+    magicLinkFallback=Если кнопка не нажимается, скопируйте ссылку в адресную строку браузера:
+  magic-link-email-html.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.emailLayout>
+    <h1 style="margin:0 0 12px;font-size:22px;font-weight:600;color:#212121;">${msg("magicLinkTitle")}</h1>
+    <p style="margin:0 0 24px;">${msg("magicLinkIntro")}</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+    <td bgcolor="#126e6b" style="mso-padding-alt:12px 24px;border-radius:8px;background-color:#126e6b;">
+    <a href="${magicLink}" style="display:inline-block;padding:12px 24px;border-radius:8px;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">${msg("magicLinkButton")}</a>
+    </td>
+    </tr>
+    </table>
+    <p style="margin:24px 0 0;font-size:13px;color:#595959;">${msg("magicLinkExpiration")}</p>
+    <p style="margin:8px 0 0;font-size:13px;color:#595959;">${msg("magicLinkIgnore")}</p>
+    <p style="margin:24px 0 0;padding-top:16px;border-top:1px solid #e3e3e3;font-size:12px;color:#595959;">${msg("magicLinkFallback")}<br><a href="${magicLink}" style="color:#126e6b;word-break:break-all;">${magicLink}</a></p>
+    </@layout.emailLayout>
+  magic-link-email-text.ftl: |
+    <#ftl output_format="plainText">
+    ${msg("magicLinkBody", magicLink)}
+  password-reset.ftl: |
+    <#import "template.ftl" as layout>
+    <@layout.emailLayout>
+    <h1 style="margin:0 0 12px;font-size:22px;font-weight:600;color:#212121;">${msg("passwordResetTitle")}</h1>
+    <p style="margin:0 0 24px;">${msg("passwordResetIntro")}</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+    <td bgcolor="#126e6b" style="mso-padding-alt:12px 24px;border-radius:8px;background-color:#126e6b;">
+    <a href="${link}" style="display:inline-block;padding:12px 24px;border-radius:8px;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">${msg("passwordResetButton")}</a>
+    </td>
+    </tr>
+    </table>
+    <p style="margin:24px 0 0;font-size:13px;color:#595959;">${msg("passwordResetExpiration", linkExpirationFormatter(linkExpiration))}</p>
+    <p style="margin:8px 0 0;font-size:13px;color:#595959;">${msg("passwordResetIgnore")}</p>
+    <p style="margin:24px 0 0;padding-top:16px;border-top:1px solid #e3e3e3;font-size:12px;color:#595959;">${msg("passwordResetFallback")}<br><a href="${link}" style="color:#126e6b;word-break:break-all;">${link}</a></p>
+    </@layout.emailLayout>
+  template.ftl: |
+    <#macro emailLayout>
+    <!DOCTYPE html>
+    <html lang="${locale.language}">
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Corporate AI</title>
+    </head>
+    <body style="margin:0;padding:0;background-color:#f4f4f4;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f4f4" style="background-color:#f4f4f4;">
+    <tr>
+    <td align="center" style="padding:32px 16px;">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:480px;background-color:#ffffff;border:1px solid #e3e3e3;border-radius:12px;">
+    <tr>
+    <td style="padding:32px;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.55;color:#212121;">
+    <div style="margin:0 0 24px;font-size:18px;font-weight:700;color:#126e6b;">Corporate AI</div>
+    <#nested>
+    </td>
+    </tr>
+    </table>
+    </td>
+    </tr>
+    </table>
+    </body>
+    </html>
+    </#macro>
+  theme.properties: |
+    parent=base
+    locales=ru,en
+kind: ConfigMap
+metadata:
+  name: keycloak-theme-corporate-email
+  namespace: corporate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: corporate
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      initContainers:
+        - name: wait-for-keycloak-db
+          image: postgres:16.15-alpine3.24
+          command:
+            - sh
+            - -c
+            - until pg_isready -h keycloak-db -p 5432 -U keycloak; do sleep 2; done
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.7.2
+          args: ["start"]
+          env:
+            - name: KC_DB
+              value: "postgres"
+            - name: KC_DB_URL
+              value: "jdbc:postgresql://keycloak-db:5432/keycloak"
+            - name: KC_DB_USERNAME
+              value: "keycloak"
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db
+                  key: password
+            - name: KC_HOSTNAME
+              value: "https://auth.example.com"
+            - name: KC_PROXY_HEADERS
+              value: "xforwarded"
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: username
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+          ports:
+            - containerPort: 8080
+            - containerPort: 9000
+          resources:
+            requests:
+              memory: "400Mi"
+              cpu: "100m"
+            limits:
+              memory: "700Mi"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 9000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: theme-corporate
+              mountPath: /opt/keycloak/themes/corporate/login
+              readOnly: true
+            - name: theme-corporate-email
+              mountPath: /opt/keycloak/themes/corporate/email
+              readOnly: true
+      volumes:
+        - name: theme-corporate
+          configMap:
+            name: keycloak-theme-corporate
+            items:
+              - key: error.ftl
+                path: error.ftl
+              - key: info.ftl
+                path: info.ftl
+              - key: login-page-expired.ftl
+                path: login-page-expired.ftl
+              - key: login-reset-password.ftl
+                path: login-reset-password.ftl
+              - key: login-update-password.ftl
+                path: login-update-password.ftl
+              - key: login.css
+                path: resources/css/login.css
+              - key: login.ftl
+                path: login.ftl
+              - key: login.js
+                path: resources/js/login.js
+              - key: logo.svg
+                path: resources/img/logo.svg
+              - key: logout-confirm.ftl
+                path: logout-confirm.ftl
+              - key: messages_en.properties
+                path: messages/messages_en.properties
+              - key: messages_ru.properties
+                path: messages/messages_ru.properties
+              - key: template.ftl
+                path: template.ftl
+              - key: theme.properties
+                path: theme.properties
+        - name: theme-corporate-email
+          configMap:
+            name: keycloak-theme-corporate-email
+            items:
+              - key: messages_en.properties
+                path: messages/messages_en.properties
+              - key: messages_ru.properties
+                path: messages/messages_ru.properties
+              - key: magic-link-email-html.ftl
+                path: html/magic-link-email.ftl
+              - key: magic-link-email-text.ftl
+                path: text/magic-link-email.ftl
+              - key: password-reset.ftl
+                path: html/password-reset.ftl
+              - key: template.ftl
+                path: html/template.ftl
+              - key: theme.properties
+                path: theme.properties

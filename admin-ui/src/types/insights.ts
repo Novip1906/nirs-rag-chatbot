@@ -1,0 +1,1 @@
+export const INSIGHTS_MAX_RANGE_DAYS = 30;

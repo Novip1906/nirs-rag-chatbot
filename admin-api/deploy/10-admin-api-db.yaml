@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-api-db
+  namespace: corporate
+spec:
+  clusterIP: None
+  selector:
+    app: admin-api-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: admin-api-db
+  namespace: corporate
+spec:
+  serviceName: admin-api-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-api-db
+  template:
+    metadata:
+      labels:
+        app: admin-api-db
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: admin-api-db
+          image: postgres:16.15-alpine3.24
+          env:
+            - name: POSTGRES_DB
+              value: "admin_api"
+            - name: POSTGRES_USER
+              value: "admin_api"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: admin-api
+                  key: db_password
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              memory: "100Mi"
+              cpu: "20m"
+            limits:
+              memory: "256Mi"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "admin_api", "-d", "admin_api"]
+            periodSeconds: 5
+            failureThreshold: 6
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

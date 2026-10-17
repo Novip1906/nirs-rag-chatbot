@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-api
+  namespace: corporate
+spec:
+  template:
+    spec:
+      containers:
+        - name: rag-api
+          env:
+            - name: RAG_OPENAI_BASEURL
+              value: "http://embeddings:8080/v1"
+            - name: EMBEDDING_BATCH_SIZE
+              value: "16"
